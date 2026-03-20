@@ -18,6 +18,7 @@
 import torch
 import torch_npu
 from vllm.forward_context import get_forward_context
+from vllm.logger import logger
 
 from vllm_ascend.device.mxfp_compat import (
     FLOAT4_E2M1FN_X2_DTYPE,
@@ -52,6 +53,7 @@ class BaseDeviceAdaptor:
         # In small batch and non-quantization scenarios, npu_moe_init_routing_v2 is more efficient.
         # It is expected that further improvements will be made after it is incorporated into CANN on June 30th.
         if quant_mode == -1 and get_forward_context().num_tokens <= DeviceOperator.small_batch_gmm_batch_num:
+            logger.debug(f"In small batch and non-quantized scenarios, use torch_npu.npu_moe_init_routing_v2")
             return torch_npu.npu_moe_init_routing_v2(
                 hidden_states,
                 topk_ids,
