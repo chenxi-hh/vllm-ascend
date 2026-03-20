@@ -19,8 +19,8 @@ import torch
 import torch_npu
 from torch.nn.functional import pad
 from vllm.forward_context import get_forward_context
-from vllm.triton_utils import HAS_TRITON
 from vllm.logger import logger
+from vllm.triton_utils import HAS_TRITON
 
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX, MoECommType
 from vllm_ascend.device.device_op import DeviceOperator
@@ -343,7 +343,7 @@ def unquant_apply_mlp(
 
     # In the small batch scenario, use _C_ascend.moe_grouped_matmul
     if group_list.dim() == 2 and get_forward_context().num_tokens <= DeviceOperator.small_batch_gmm_batch_num:
-        logger.debug(f"In small-batch scenarios, use torch.ops._C_ascend.moe_grouped_matmul")
+        logger.debug("In small-batch scenarios, use torch.ops._C_ascend.moe_grouped_matmul")
         gate_up_out = torch.ops._C_ascend.moe_grouped_matmul(
             x=hidden_states,
             weight=w1,
