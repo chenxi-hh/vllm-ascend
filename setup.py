@@ -328,9 +328,15 @@ class cmake_build_ext(build_ext):
         fc_base_dir = os.environ.get("FETCHCONTENT_BASE_DIR", fc_base_dir)
         cmake_args += ["-DFETCHCONTENT_BASE_DIR={}".format(fc_base_dir)]
 
-        torch_npu_command = "python3 -m pip show torch-npu | grep '^Location:' | awk '{print $2}'"
         try:
-            torch_npu_path = subprocess.check_output(torch_npu_command, shell=True).decode().strip()
+            pip_output = subprocess.check_output(["python3", "-m", "pip", "show", "torch-npu"]).decode()
+            torch_npu_path = ""
+            for line in pip_output.splitlines():
+                if line.startswith("Location:"):
+                    torch_npu_path = line.split(None, 1)[1].strip()
+                    break
+            if not torch_npu_path:
+                raise RuntimeError("Could not find Location in pip show output")
             torch_npu_path += "/torch_npu"
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Retrieve torch version version failed: {e}")
