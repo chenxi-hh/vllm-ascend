@@ -24,7 +24,7 @@ from pytest_mock import MockerFixture
 from tests.ut.base import TestBase
 from vllm_ascend.ascend_forward_context import MoECommType
 from vllm_ascend.ops.fused_moe.experts_selector import select_experts
-from vllm_ascend.ops.fused_moe.fused_moe import AscendUnquantizedFusedMoEMethod
+from vllm_ascend.ops.fused_moe.fused_moe import AscendFusedMoE, AscendUnquantizedFusedMoEMethod
 from vllm_ascend.ops.fused_moe.moe_mlp import cumsum_group_list, unified_apply_mlp
 from vllm_ascend.ops.fused_moe.moe_runtime_args import (
     MoEMlpComputeInput,
@@ -586,3 +586,53 @@ class TestUnifiedApplyMLP(TestBase):
         self.assertTrue(mock_forward_context.with_quant)
         self.assertEqual(result.shape, hidden_states_shape)
         self.assertEqual(result.dtype, torch.bfloat16)
+
+
+class TestForwardImplAllMoeLayersNoneGuard:
+    """Regression tests for the None guard on forward_context.all_moe_layers.
+
+    When fast_moe_cold_start is False (e.g. PyTorch >= 2.11 with
+    HAS_OPAQUE_TYPE=True, or speculative decoding enabled), upstream vLLM
+    sets forward_context.all_moe_layers to None. Before the fix, calling
+    len(forward_context.all_moe_layers) raised TypeError; an empty list
+    would cause ZeroDivisionError from the modulo operation.
+
+    See: https://github.com/chenxi-hh/vllm-ascend/commit/7d90f709
+    """
+
+    @pytest.mark.parametrize(
+        "all_moe_layers",
+        [None, []],
+        ids=["none", "empty_list"],
+    )
+    @patch("vllm_ascend.ops.fused_moe.fused_moe.get_forward_context")
+    def test_forward_impl_skips_index_wrap_when_all_moe_layers_falsy(self, mock_get_forward_context, all_moe_layers):
+        mock_ctx = MagicMock()
+        mock_ctx.all_moe_layers = all_moe_layers
+        mock_ctx.moe_layer_index = 5
+        mock_get_forward_context.return_value = mock_ctx
+
+        moe = MagicMock(spec=AscendFusedMoE)
+        moe.enable_npugraph_ex_static_kernel = True
+        moe.quant_method = MagicMock()
+        moe.multistream_overlap_gate = False
+
+        AscendFusedMoE.forward_impl(moe, torch.randn(4, 8), torch.randn(4, 8))
+
+        assert mock_ctx.moe_layer_index == 5
+
+    @patch("vllm_ascend.ops.fused_moe.fused_moe.get_forward_context")
+    def test_forward_impl_wraps_index_when_all_moe_layers_present(self, mock_get_forward_context):
+        mock_ctx = MagicMock()
+        mock_ctx.all_moe_layers = ["layer0", "layer1", "layer2"]
+        mock_ctx.moe_layer_index = 5
+        mock_get_forward_context.return_value = mock_ctx
+
+        moe = MagicMock(spec=AscendFusedMoE)
+        moe.enable_npugraph_ex_static_kernel = True
+        moe.quant_method = MagicMock()
+        moe.multistream_overlap_gate = False
+
+        AscendFusedMoE.forward_impl(moe, torch.randn(4, 8), torch.randn(4, 8))
+
+        assert mock_ctx.moe_layer_index == 5 % 3
