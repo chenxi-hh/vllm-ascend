@@ -416,9 +416,11 @@ def build_router(store: Store):
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
-    @router.get("/debug/snapshot")
-    def debug_snapshot() -> dict[str, object]:
-        return store.debug_snapshot()
+    if os.getenv("RFORK_ENABLE_DEBUG_ENDPOINT", "").lower() in ("1", "true"):
+
+        @router.get("/debug/snapshot")
+        def debug_snapshot() -> dict[str, object]:
+            return store.debug_snapshot()
 
     return router
 

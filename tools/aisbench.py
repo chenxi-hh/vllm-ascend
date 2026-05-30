@@ -56,9 +56,13 @@ class AisbenchRunner:
         if self.num_prompts:
             aisbench_cmd.extend(["--num-prompts", str(self.num_prompts)])
         self.stdout_file = f"output_{self.task_type}.txt"
-        aisbench_cmd = " ".join(aisbench_cmd) + f" --debug > {self.stdout_file} 2>&1 &"
+        aisbench_cmd.append("--debug")
         print(f"running aisbench cmd: {aisbench_cmd}")
-        self.proc: subprocess.Popen = subprocess.Popen(aisbench_cmd, shell=True)
+        stdout_fd = open(self.stdout_file, "w")  # noqa: SIM115
+        self.proc: subprocess.Popen = subprocess.Popen(
+            aisbench_cmd, shell=False, stdout=stdout_fd, stderr=subprocess.STDOUT
+        )
+        stdout_fd.close()
 
     def __init__(self, model: str, port: int, aisbench_config: dict, host_ip: str = "localhost", verify=True):
         self.model = model
@@ -203,8 +207,7 @@ class AisbenchRunner:
 
     def _check_runtime_stdout(self):
         time.sleep(5)
-        cmd = f"tail -100 {self.stdout_file}"
-        return subprocess.check_output(cmd, shell=True).decode()
+        return subprocess.check_output(["tail", "-100", self.stdout_file]).decode()
 
     @staticmethod
     def _check_runtime_error(line):
@@ -298,8 +301,7 @@ def get_lock(model_name_or_path: str | Path, cache_dir: str | None = None):
     hash_name = hashlib.sha256(model_name.encode()).hexdigest()
     # add hash to avoid conflict with old users' lock files
     lock_file_name = hash_name + model_name + ".lock"
-    # mode 0o666 is required for the filelock to be shared across users
-    lock = filelock.FileLock(os.path.join(lock_dir, lock_file_name), mode=0o666)
+    lock = filelock.FileLock(os.path.join(lock_dir, lock_file_name), mode=0o644)
     return lock
 
 
