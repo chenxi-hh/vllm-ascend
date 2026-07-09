@@ -1,3 +1,4 @@
+import io
 import math
 import os
 import pickle
@@ -17,6 +18,52 @@ from vllm.v1.kv_cache_interface import AttentionSpec
 
 from vllm_ascend.core.kv_cache_interface import AscendMLAAttentionSpec
 from vllm_ascend.distributed.kv_transfer.kv_pool.cpu_offload.cpu_kv_cache_manager import CPUKVCacheManager
+
+_PICKLE_ALLOWED_CLASSES: set[tuple[str, str]] = {
+    ("builtins", "dict"),
+    ("builtins", "list"),
+    ("builtins", "tuple"),
+    ("builtins", "set"),
+    ("builtins", "frozenset"),
+    ("builtins", "str"),
+    ("builtins", "bytes"),
+    ("builtins", "int"),
+    ("builtins", "float"),
+    ("builtins", "bool"),
+    ("builtins", "complex"),
+    ("builtins", "type"),
+    ("builtins", "slice"),
+    ("builtins", "range"),
+    ("builtins", "NoneType"),
+    ("builtins", "NameError"),
+    ("builtins", "Exception"),
+    ("builtins", "RuntimeError"),
+    ("builtins", "ValueError"),
+    ("builtins", "TypeError"),
+    ("builtins", "KeyError"),
+    ("builtins", "AttributeError"),
+    ("collections", "OrderedDict"),
+    ("collections", "defaultdict"),
+    ("multiprocessing.shared_memory", "SharedMemory"),
+    ("torch", "dtype"),
+    ("torch", "Size"),
+    ("vllm.v1.kv_cache_interface", "AttentionSpec"),
+    ("vllm.v1.kv_cache_interface", "MLAAttentionSpec"),
+    ("vllm_ascend.distributed.kv_transfer.kv_pool.cpu_offload.metadata", "MLAConfig"),
+}
+
+
+class _RestrictedUnpickler(pickle.Unpickler):
+    """Restrict unpickling to a known-safe set of classes."""
+
+    def find_class(self, module: str, name: str) -> type:
+        if (module, name) in _PICKLE_ALLOWED_CLASSES:
+            return super().find_class(module, name)
+        raise pickle.UnpicklingError(f"Disallowed class: {module}.{name}")
+
+
+def _restricted_loads(data: bytes) -> Any:
+    return _RestrictedUnpickler(io.BytesIO(data)).load()
 
 
 @dataclass
@@ -63,7 +110,7 @@ class MetadataServer:
             self.socket.send(b"", zmq.SNDMORE)  # type: ignore
             self.socket.send(pickle.dumps(request))
             _ = self.socket.recv()
-            response = pickle.loads(self.socket.recv())
+            response = _restricted_loads(self.socket.recv())
             result, error = response
             if error:
                 logger.exception("call metadata sever error: %s", error)
@@ -195,7 +242,7 @@ class MetadataServer:
         _ = self.socket.recv()
         raw_msg = self.socket.recv()
         try:
-            func_name, args, kwargs = pickle.loads(raw_msg)
+            func_name, args, kwargs = _restricted_loads(raw_msg)
         except Exception as e:
             response = (None, Exception(f"Invalid request: {str(e)}"))
         else:
