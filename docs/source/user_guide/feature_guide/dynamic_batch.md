@@ -23,7 +23,7 @@ We are working on further improvements and this feature will support more XPUs i
 
 `--SLO_limits_for_dynamic_batch` is the tuning parameter (integer type) for the dynamic batch feature, larger values relax latency limitation, leading to higher effective throughput. The parameter can be selected according to the specific models or service requirements.
 
-```python
+```text
 --SLO_limits_for_dynamic_batch = -1  # Default value; dynamic batching is disabled.
 --SLO_limits_for_dynamic_batch = 0  # Baseline value for dynamic batching; dynamic batching is disabled. FCFS and decode-first chunked prefilling strategy is used.
 --SLO_limits_for_dynamic_batch > 0  # User-defined positive value; dynamic batching is enabled. FCFS and decode-first chunked prefilling strategy is used.
